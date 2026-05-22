@@ -1,24 +1,107 @@
-.DS_Store
-__pycache__/
+# Project-specific
+.worktrees/
+.worktree/
+.assets
+.docs
+.env
+.web
+.orion
+
+# Claude / AI assistant artifacts
+docs/superpowers/
+docs/plans/
+
+# webui (monorepo frontend)
+webui/node_modules/
+webui/dist/
+webui/coverage/
+webui/.vite/
+*.tsbuildinfo
+
+# Python bytecode & caches
 *.pyc
 *.pyo
 *.pyd
+*.pyw
+*.pyz
+__pycache__/
+*.egg-info/
+*.egg
+.venv/
+venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-.venv/
-venv/
-node_modules/
+.pytype/
+.dmypy.json
+dmypy.json
+.tox/
+.nox/
+.hypothesis/
+
+# Build & packaging
 dist/
 build/
+*.manifest
+*.spec
+pip-wheel-metadata/
+share/python-wheels/
+
+# Test & coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# Lock files (project policy)
+poetry.lock
+uv.lock
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+
+# Editors & IDEs (local workspace / user settings)
+.vscode/
+.cursor/
+.idea/
+.fleet/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+nano.*.save
+
+# Environment & secrets (keep examples tracked if needed)
+.env.*
+!.env.example
+local.config.json
+*.local.config.json
+
+# Logs & temp
 *.log
-*.jsonl
-*.sqlite3
-*.db
-sessions/
-.nanobot/
+logs/
 tmp/
 temp/
-*.local.config.json
+*.tmp
+exp/
+
+# Local benchmark artifacts
+benchmark_records_*.jsonl
+benchmark_traces_*.jsonl
+benchmark_report*.md
