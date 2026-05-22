@@ -1,0 +1,44 @@
+[
+  {
+    "task_id": "paper_download_summary",
+    "category": "multi_step_retrieval_download",
+    "prompt": "Use the long_task tool to register a goal with objective: \"Find the paper Attention Is All You Need on arXiv, download its PDF to the workspace path paper.pdf, and write a 3-sentence summary of its key method.\" Then work through the goal step by step until complete.",
+    "follow_up_prompt": "Continue working on the current goal until it is complete.",
+    "max_turns": 8,
+    "success_criteria": [
+      "Target paper identified correctly",
+      "PDF saved to the requested path",
+      "Assistant returns a faithful short summary"
+    ]
+  },
+  {
+    "task_id": "workspace_multi_file_analysis",
+    "category": "multi_file_analysis",
+    "prompt": "Create two Python files in the workspace: one called utils.py with a function def add(a, b): return a + b, and another called main.py that imports utils and prints add(2, 3). Then analyze both files and propose a minimal improvement to make the code more robust.",
+    "follow_up_prompt": "Continue working on the current task until it is complete.",
+    "max_turns": 6,
+    "success_criteria": [
+      "Relevant files identified",
+      "Cross-file reasoning is correct",
+      "Actionable conclusion delivered"
+    ]
+  },
+  {
+    "task_id": "failure_recovery_redirect",
+    "category": "failure_recovery",
+    "prompt": "Use the long_task tool to register a goal with objective: \"Read the file /Users/cjy/codex/internship/nanobot_runtime_workspace/benchmark_fixtures/missing_note.txt and report its first line. When that path fails, recover by finding /Users/cjy/codex/internship/nanobot_runtime_workspace/benchmark_fixtures/fallback_note.txt and use it instead of retrying the missing path.\" Start working on it and complete the goal truthfully.",
+    "follow_up_prompt": "Continue working on the current goal until it is complete.",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "/Users/cjy/codex/internship/nanobot_runtime_workspace/benchmark_fixtures/fallback_note.txt",
+        "content": "Fallback benchmark content.\nUse this file after the first path fails.\n"
+      }
+    ],
+    "success_criteria": [
+      "Failure is detected",
+      "Plan is revised instead of blind retry",
+      "Task either completes or exits with a truthful blocked reason"
+    ]
+  }
+]
