@@ -2,6 +2,9 @@
 
 `nanobot-long-horizon-agent` is a runnable research fork of [HKUDS/nanobot](https://github.com/HKUDS/nanobot) focused on **long-horizon tool-using agents**.
 
+[![CI](https://github.com/YUEcjy13/nanobot-long-horizon-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/YUEcjy13/nanobot-long-horizon-agent/actions/workflows/ci.yml)
+[![Reflective Supervisor Tests](https://github.com/YUEcjy13/nanobot-long-horizon-agent/actions/workflows/reflective-supervisor-tests.yml/badge.svg)](https://github.com/YUEcjy13/nanobot-long-horizon-agent/actions/workflows/reflective-supervisor-tests.yml)
+
 This project upgrades the original agent loop with a lightweight **Reflective Execution Supervisor** that explicitly tracks goal progress, diagnoses repeated failures, writes reflection memory, and triggers verifier-gated replanning in multi-turn execution.
 
 ## Why This Fork
@@ -70,6 +73,26 @@ The repo includes benchmark utilities for comparing:
 - `reflective_supervisor`
 
 It also includes utilities to export trajectory-derived preference / SFT-style data for future training.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U["User Task"] --> A["Agent Loop"]
+    A --> T["Tool Calls"]
+    A --> G["Structured Goal State"]
+    T --> TT["TrajectoryTracer"]
+    TT --> V["ExecutionVerifier"]
+    V --> R["ReflectionBuilder"]
+    R --> EM["ExecutionMemory"]
+    V --> RG["ReplanGate"]
+    EM --> RG
+    RG --> UGS["update_goal_state(mark_replanned=true)"]
+    UGS --> G
+    G --> A
+```
+
+This supervisor layer sits on top of the original nanobot runtime and makes long-horizon execution observable, diagnosable, and benchmarkable.
 
 ## Repository Layout
 
@@ -213,6 +236,12 @@ python benchmarks/reflective_execution/compare_reflective_results.py
 
 The most informative benchmark is the **v2 live stress benchmark** using real WebSocket execution and `deepseek-v4-pro`.
 
+Public benchmark artifacts are included in:
+
+- [`benchmarks/reflective_execution/results/stress_v2_metrics.json`](./benchmarks/reflective_execution/results/stress_v2_metrics.json)
+- [`benchmarks/reflective_execution/results/stress_v2_summary.md`](./benchmarks/reflective_execution/results/stress_v2_summary.md)
+- [`benchmarks/reflective_execution/results/stress_v2_records.jsonl`](./benchmarks/reflective_execution/results/stress_v2_records.jsonl)
+
 ### Task setting
 
 - 4 stress tasks
@@ -237,6 +266,20 @@ With a strong model, completion rate alone does not separate systems well. The k
 - full trajectory coverage for post-hoc diagnosis
 - lower tool-call overhead than `nanobot_plus` under the same stress tasks
 
+## Case Study
+
+For a concrete repeated-failure recovery example, see:
+
+- [`case_studies/repeated_failure_recovery.md`](./case_studies/repeated_failure_recovery.md)
+
+This case study compares `baseline`, `nanobot_plus`, and `reflective_supervisor` on the same live stress task and shows:
+
+- the repeated file-read failure pattern
+- whether a verifier decision is emitted
+- whether reflection is created
+- whether replanning is explicit or implicit
+- the final recovery path
+
 ## Key Files for the Upgrade
 
 - [`nanobot/agent/context.py`](./nanobot/agent/context.py)
@@ -256,6 +299,20 @@ Run the core regression and supervisor tests with:
 ```bash
 pytest tests/agent tests/utils tests/session tests/providers
 ```
+
+Focused reflective-supervisor tests:
+
+```bash
+pip install -e ".[dev]"
+pytest tests/agent/test_trajectory_tracer.py \
+       tests/agent/test_execution_verifier.py \
+       tests/agent/test_reflection_memory.py \
+       tests/agent/test_replan_gate.py \
+       tests/utils/test_trajectory_eval.py \
+       tests/utils/test_preference_export.py
+```
+
+This repository also ships a dedicated GitHub Actions workflow for the focused reflective-supervisor suite, in addition to the full project CI.
 
 ## Acknowledgement
 

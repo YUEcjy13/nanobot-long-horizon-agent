@@ -1,0 +1,53 @@
+{
+  "baseline_stress_v2_full": {
+    "task_count": 4,
+    "task_success_rate": 1.0,
+    "completion_rate": 1.0,
+    "step_completion_rate": 0.0,
+    "repeated_tool_call_rate": 0.13513513513513514,
+    "repeated_failed_tool_call_rate": 0.0,
+    "replan_trigger_count": 0,
+    "successful_replan_rate": 0.0,
+    "total_reflection_count": 0,
+    "average_reflection_count": 0.0,
+    "reflection_reuse_rate": 0.0,
+    "avg_tool_calls": 9.25,
+    "avg_turns": 2.5,
+    "avg_latency_ms": 50463.0,
+    "trajectory_completeness": 0.6
+  },
+  "nanobot_plus_stress_v2_full": {
+    "task_count": 4,
+    "task_success_rate": 1.0,
+    "completion_rate": 1.0,
+    "step_completion_rate": 0.0,
+    "repeated_tool_call_rate": 0.1276595744680851,
+    "repeated_failed_tool_call_rate": 0.0,
+    "replan_trigger_count": 0,
+    "successful_replan_rate": 0.0,
+    "total_reflection_count": 0,
+    "average_reflection_count": 0.0,
+    "reflection_reuse_rate": 0.0,
+    "avg_tool_calls": 11.75,
+    "avg_turns": 2.5,
+    "avg_latency_ms": 63185.75,
+    "trajectory_completeness": 0.6
+  },
+  "reflective_supervisor_stress_v2_full": {
+    "task_count": 4,
+    "task_success_rate": 1.0,
+    "completion_rate": 1.0,
+    "step_completion_rate": 0.0,
+    "repeated_tool_call_rate": 0.13157894736842105,
+    "repeated_failed_tool_call_rate": 0.5,
+    "replan_trigger_count": 3,
+    "successful_replan_rate": 1.0,
+    "total_reflection_count": 3,
+    "average_reflection_count": 0.75,
+    "reflection_reuse_rate": 1.0,
+    "avg_tool_calls": 9.5,
+    "avg_turns": 2.5,
+    "avg_latency_ms": 52658.0,
+    "trajectory_completeness": 1.0
+  }
+}
