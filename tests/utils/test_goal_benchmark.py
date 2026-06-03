@@ -1,8 +1,11 @@
 from nanobot.utils.goal_benchmark import (
     BASELINE_ENV_OVERRIDES,
+    SUPERVISOR_ENV_OVERRIDES,
+    benchmark_follow_up_setup_files,
     benchmark_flag_enabled,
     benchmark_variant_env,
     normalize_tool_signature,
+    resolve_benchmark_follow_up,
     sanitize_frame_for_trace,
 )
 
@@ -19,6 +22,7 @@ def test_benchmark_variant_env_disables_phase_integrations_for_baseline():
     assert benchmark_variant_env("enhanced") == {}
     assert benchmark_variant_env("baseline") == BASELINE_ENV_OVERRIDES
     assert benchmark_variant_env("ablation_live") == BASELINE_ENV_OVERRIDES
+    assert benchmark_variant_env("reflective_supervisor") == SUPERVISOR_ENV_OVERRIDES
 
 
 def test_normalize_tool_signature_is_stable():
@@ -44,3 +48,29 @@ def test_sanitize_frame_for_trace_keeps_tool_events_and_goal_state():
     })
     assert turn_end["latency_ms"] == 1234
     assert turn_end["goal_state"]["replan_count"] == 1
+
+
+def test_resolve_benchmark_follow_up_supports_staged_prompts():
+    task = {
+        "follow_up_prompts": [
+            "follow-up turn 1",
+            "follow-up turn 2",
+        ]
+    }
+
+    assert resolve_benchmark_follow_up(task, 1) == "follow-up turn 1"
+    assert resolve_benchmark_follow_up(task, 2) == "follow-up turn 2"
+    assert resolve_benchmark_follow_up(task, 3) == "follow-up turn 2"
+
+
+def test_benchmark_follow_up_setup_files_supports_staged_rows():
+    task = {
+        "follow_up_setup_files": [
+            [{"path": "a.txt", "content": "one"}],
+            [{"path": "b.txt", "content": "two"}],
+        ]
+    }
+
+    assert benchmark_follow_up_setup_files(task, 1) == [{"path": "a.txt", "content": "one"}]
+    assert benchmark_follow_up_setup_files(task, 2) == [{"path": "b.txt", "content": "two"}]
+    assert benchmark_follow_up_setup_files(task, 3) == [{"path": "b.txt", "content": "two"}]

@@ -200,6 +200,23 @@ async def test_update_goal_state_tracks_failures_and_replan_signal(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_goal_tools_write_trajectory_lifecycle(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ug, cg = _tools(tmp_path, sm)
+
+    await lt.execute(goal="Ship feature", plan_steps=["Plan", "Code"])
+    await ug.execute(progress_summary="Finished planning.", completed_steps=["Plan"])
+    await cg.execute(recap="Done.")
+
+    trace_files = list((tmp_path / "traces").glob("trajectory_*.jsonl"))
+    assert len(trace_files) == 1
+    text = trace_files[0].read_text(encoding="utf-8")
+    assert "goal_started" in text
+    assert "goal_state_updated" in text
+    assert "goal_completed" in text
+
+
+@pytest.mark.asyncio
 async def test_long_task_and_goal_tools_registered(tmp_path):
     bus = MessageBus()
     provider = MagicMock()

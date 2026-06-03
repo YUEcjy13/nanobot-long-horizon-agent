@@ -1,0 +1,106 @@
+[
+  {
+    "task_id": "v2_provider_repeated_failure_reflection",
+    "category": "repeated_failure_recovery",
+    "prompt": "这是第二版 reflective stress benchmark。必须先调用 long_task 注册目标和初始计划。第一回合只做这些事：1）尝试读取 configs/provider.env；2）在不改变路径的前提下，再次读取同一路径一次；3）如果两次都失败，只用一句话汇报“同一路径重复失败”，然后等待下一回合。第一回合不要调用 update_goal_state，不要恢复，不要 complete_goal。",
+    "follow_up_prompts": [
+      "继续同一长时任务。现在请利用上一回合的失败证据和任何 supervisor 提示修正策略；如果你要改计划，应先用 update_goal_state 明确新的步骤与进展说明。随后依据 fixtures/runbook/RUNBOOK.md 改用 configs/provider.sample.env 恢复，并把恢复结论写入 reflective_outputs/v2_provider_reflection.md，最后 complete_goal。"
+    ],
+    "max_turns": 4,
+    "expected_signals": [
+      "reflection_created",
+      "replan_requested",
+      "goal_state_updated"
+    ],
+    "setup_files": [
+      {
+        "path": "fixtures/runbook/RUNBOOK.md",
+        "content": "# Recovery Runbook\n- If configs/provider.env is missing, fall back to configs/provider.sample.env.\n- After switching strategy, explicitly mark the goal as replanned before more tool calls.\n"
+      },
+      {
+        "path": "configs/provider.sample.env",
+        "content": "PROVIDER=deepseek-v4-pro\nTIMEOUT=30\n"
+      }
+    ]
+  },
+  {
+    "task_id": "v2_stalled_gate_unlock",
+    "category": "stalled_step_recovery",
+    "prompt": "这是第二版 reflective stress benchmark。必须先调用 long_task 注册目标和初始计划。第一回合只读取 control/session_gate.txt；如果文件内容包含 LOCKED，就只返回一句阻塞状态并等待下一回合。第一回合不要调用 update_goal_state，不要 complete_goal，也不要读取其他文件。",
+    "follow_up_prompts": [
+      "继续同一长时任务。再次只检查 control/session_gate.txt；如果仍然是 LOCKED，就继续保持当前步骤并等待下一回合，不要 complete_goal。",
+      "继续同一长时任务。再次只检查 control/session_gate.txt；如果仍然是 LOCKED，就继续保持当前步骤并等待下一回合，不要 complete_goal。",
+      "继续同一长时任务。现在如果 control/session_gate.txt 已解锁，请根据任何 supervisor 提示先修正计划与当前步骤，再读取 gate 中给出的目标文件，把恢复说明写入 reflective_outputs/v2_gate_recovery.md，最后 complete_goal。"
+    ],
+    "follow_up_setup_files": [
+      [],
+      [],
+      [
+        {
+          "path": "control/session_gate.txt",
+          "content": "UNLOCKED: use data/recovery/target.txt\n"
+        },
+        {
+          "path": "data/recovery/target.txt",
+          "content": "recovery ready\n"
+        }
+      ]
+    ],
+    "max_turns": 6,
+    "expected_signals": [
+      "verifier_decision",
+      "reflection_created",
+      "replan_requested"
+    ],
+    "setup_files": [
+      {
+        "path": "control/session_gate.txt",
+        "content": "LOCKED: waiting for override token\n"
+      }
+    ]
+  },
+  {
+    "task_id": "v2_manifest_double_fail_then_reuse",
+    "category": "reflection_reuse",
+    "prompt": "这是第二版 reflective stress benchmark。必须先调用 long_task 注册目标和初始计划。第一回合先尝试读取 fixtures/downloads/colpali.pdf；如果失败，在不改变路径的前提下再尝试一次相同读取；若仍失败，只汇报“相同 PDF 路径重复失败”，然后等待下一回合。第一回合不要调用 update_goal_state，不要 complete_goal。",
+    "follow_up_prompts": [
+      "继续同一长时任务。现在请利用上一回合的失败证据和任何 supervisor 提示修正策略；如果你要改计划，应先用 update_goal_state 明确新的步骤与进展说明。随后读取 fixtures/manifest/archive/paper_manifest.json，基于 manifest 给出的信息写出 reflective_outputs/v2_manifest_reflection.md，最后 complete_goal。结论中要明确说明为什么不应继续重试原 PDF 路径。"
+    ],
+    "max_turns": 4,
+    "expected_signals": [
+      "reflection_created",
+      "replan_requested",
+      "goal_completed"
+    ],
+    "setup_files": [
+      {
+        "path": "fixtures/manifest/archive/paper_manifest.json",
+        "content": "{\n  \"paper\": \"ColPali\",\n  \"pdf_path\": \"fixtures/downloads/colpali.pdf\",\n  \"mirror\": \"disabled\",\n  \"fallback\": \"manual-manifest-only\"\n}\n"
+      }
+    ]
+  },
+  {
+    "task_id": "v2_release_alias_reflection",
+    "category": "verified_fact_reuse",
+    "prompt": "这是第二版 reflective stress benchmark。必须先调用 long_task 注册目标和初始计划。第一回合只做这些事：1）尝试读取 fixtures/release/current_version.txt；2）如果失败，再次读取同一路径一次；3）若仍失败，只汇报“版本别名路径重复失败”，然后等待下一回合。第一回合不要调用 update_goal_state，不要 complete_goal。",
+    "follow_up_prompts": [
+      "继续同一长时任务。现在请利用上一回合的失败证据和任何 supervisor 提示修正策略；如果你要改计划，应先用 update_goal_state 明确新的步骤与进展说明。随后读取 fixtures/release/VERSION 和 fixtures/release/alias_map.json，推断正确版本号，并把一致的版本信息分别写入 reflective_outputs/v2_release_version.txt 和 reflective_outputs/v2_release_note.md，最后 complete_goal。"
+    ],
+    "max_turns": 4,
+    "expected_signals": [
+      "reflection_created",
+      "replan_requested",
+      "verified_fact_reuse"
+    ],
+    "setup_files": [
+      {
+        "path": "fixtures/release/VERSION",
+        "content": "v2.4.1\n"
+      },
+      {
+        "path": "fixtures/release/alias_map.json",
+        "content": "{\n  \"current_version.txt\": \"VERSION\",\n  \"release_note\": \"Use the canonical VERSION file when alias-based lookup fails.\"\n}\n"
+      }
+    ]
+  }
+]

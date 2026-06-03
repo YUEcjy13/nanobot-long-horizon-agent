@@ -1,0 +1,134 @@
+[
+  {
+    "task_id": "reflective_recovery_manifest",
+    "category": "repeated_failure_recovery",
+    "prompt": "找到工作区里和 ColPali 论文下载相关的 manifest 文件，整理出正确的 PDF 存放路径，并写一段简短说明到 reflective_outputs/manifest_summary.md。",
+    "follow_up_prompt": "继续当前任务，直到真正完成并明确说明结果。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/manifest/archive/paper_manifest.json",
+        "content": "{\n  \"paper\": \"ColPali\",\n  \"pdf_path\": \"fixtures/downloads/colpali.pdf\",\n  \"mirror\": \"disabled\"\n}\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_multistep_runbook",
+    "category": "multi_step_execution",
+    "prompt": "阅读工作区中的日志和 runbook，判断最近一次 benchmark 失败的原因，并把结论写入 reflective_outputs/runbook_diagnosis.md。",
+    "follow_up_prompt": "继续执行，不要只停留在分析阶段。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/runbook/incident.log",
+        "content": "2026-06-01T10:00:01Z INFO start benchmark\n2026-06-01T10:00:07Z ERROR read_file path missing: configs/provider.env\n2026-06-01T10:00:10Z WARN fallback disabled\n"
+      },
+      {
+        "path": "fixtures/runbook/RUNBOOK.md",
+        "content": "# Benchmark Runbook\n- If provider.env is missing, use configs/provider.sample.env to restore required keys.\n- Always confirm the gateway health endpoint before rerunning.\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_replan_broken_path",
+    "category": "replanning",
+    "prompt": "根据工作区内的说明文件找到正确的数据目录，忽略失效路径，并把最终定位结果写到 reflective_outputs/data_path.txt。",
+    "follow_up_prompt": "如果当前路径不对，请主动调整计划后继续。",
+    "max_turns": 5,
+    "setup_files": [
+      {
+        "path": "fixtures/replan/README.txt",
+        "content": "Old path: data/raw/final.json (deprecated)\nCurrent path: data/archive/final.json\n"
+      },
+      {
+        "path": "data/archive/final.json",
+        "content": "{\"status\": \"ready\", \"items\": 12}\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_fact_reuse_release",
+    "category": "verified_fact_reuse",
+    "prompt": "从工作区中的版本说明和配置文件里确认当前发布版本号，并将统一版本号写入 reflective_outputs/release_version.txt 和 reflective_outputs/release_note.md。",
+    "follow_up_prompt": "继续当前任务，保持两个输出文件中的版本号一致。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/release/VERSION",
+        "content": "v2.4.1\n"
+      },
+      {
+        "path": "fixtures/release/notes.md",
+        "content": "Release candidate for v2.4.1 with supervisor benchmark support.\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_goal_drift_notes",
+    "category": "goal_drift_resistance",
+    "prompt": "只围绕 supervisor 升级整理一份要点摘要，不要被工作区中其他无关主题带偏，输出到 reflective_outputs/supervisor_notes.md。",
+    "follow_up_prompt": "继续，确保输出只保留 supervisor 相关内容。",
+    "max_turns": 5,
+    "setup_files": [
+      {
+        "path": "fixtures/drift/supervisor.md",
+        "content": "Reflective supervisor adds trajectory tracing, verifier decisions, reflection memory, and gated replanning.\n"
+      },
+      {
+        "path": "fixtures/drift/unrelated.md",
+        "content": "This file talks about image generation UI polish and should not dominate the summary.\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_failure_resume_plan",
+    "category": "repeated_failure_recovery",
+    "prompt": "根据工作区中的失败记录和备选方案，生成一个恢复执行计划并写到 reflective_outputs/recovery_plan.md。",
+    "follow_up_prompt": "继续当前恢复任务，避免重复同一路径。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/recovery/failures.txt",
+        "content": "Attempt A: timeout\nAttempt A retry: timeout\nUse source B after repeated timeouts.\n"
+      },
+      {
+        "path": "fixtures/recovery/options.md",
+        "content": "Option B: use cached local mirror before external fetch.\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_cross_file_consistency",
+    "category": "verified_fact_reuse",
+    "prompt": "核对多份配置文件中的 provider 名称是否一致，并把最终确认结果写入 reflective_outputs/provider_consistency.md。",
+    "follow_up_prompt": "继续任务，必要时引用已经确认过的事实，不要重复无效检查。",
+    "max_turns": 5,
+    "setup_files": [
+      {
+        "path": "fixtures/providers/a.json",
+        "content": "{\"provider\": \"deepseek-v4-pro\"}\n"
+      },
+      {
+        "path": "fixtures/providers/b.yaml",
+        "content": "provider: deepseek-v4-pro\n"
+      }
+    ]
+  },
+  {
+    "task_id": "reflective_multifile_cleanup",
+    "category": "multi_step_execution",
+    "prompt": "阅读多个 TODO 文件，生成一个有先后顺序的清理计划并写入 reflective_outputs/cleanup_plan.md。",
+    "follow_up_prompt": "继续当前任务，直到生成完整计划。",
+    "max_turns": 5,
+    "setup_files": [
+      {
+        "path": "fixtures/todos/backend.todo",
+        "content": "- add verifier tests\n- export reflective benchmark metrics\n"
+      },
+      {
+        "path": "fixtures/todos/frontend.todo",
+        "content": "- show goal state timeline\n- display replan count\n"
+      }
+    ]
+  }
+]

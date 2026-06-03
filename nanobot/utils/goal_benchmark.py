@@ -14,6 +14,11 @@ BASELINE_ENV_OVERRIDES = {
     "NANOBOT_ENABLE_AUTO_REPLAN": "0",
 }
 
+SUPERVISOR_ENV_OVERRIDES = {
+    "NANOBOT_ENABLE_EXECUTION_VERIFIER": "1",
+    "NANOBOT_ENABLE_REFLECTION_MEMORY": "1",
+}
+
 
 def benchmark_flag_enabled(value: str | None, *, default: bool = True) -> bool:
     """Interpret common environment-flag spellings."""
@@ -27,6 +32,8 @@ def benchmark_variant_env(variant: str) -> dict[str, str]:
     normalized = str(variant or "").strip().lower()
     if normalized in {"baseline", "baseline_live", "ablation", "ablation_live"}:
         return dict(BASELINE_ENV_OVERRIDES)
+    if normalized in {"reflective_supervisor", "supervisor", "reflective"}:
+        return dict(SUPERVISOR_ENV_OVERRIDES)
     return {}
 
 
@@ -48,6 +55,36 @@ def load_benchmark_tasks(path: str | Path) -> list[dict[str, Any]]:
     if not tasks:
         raise ValueError(f"No runnable tasks found in {task_path}")
     return tasks
+
+
+def resolve_benchmark_follow_up(task: dict[str, Any], turn_count: int) -> str:
+    """Resolve the follow-up prompt for the next turn.
+
+    Turn counts are 1-based here: after the first completed turn, ``turn_count`` is 1,
+    so the first entry of ``follow_up_prompts`` is selected.
+    """
+    prompts = task.get("follow_up_prompts")
+    if isinstance(prompts, list):
+        normalized = [str(item).strip() for item in prompts if str(item).strip()]
+        if normalized:
+            index = min(max(0, int(turn_count) - 1), len(normalized) - 1)
+            return normalized[index]
+    prompt = str(task.get("follow_up_prompt") or "").strip()
+    if prompt:
+        return prompt
+    return "Continue working on the current long-running task until it is complete."
+
+
+def benchmark_follow_up_setup_files(task: dict[str, Any], turn_count: int) -> list[dict[str, Any]]:
+    """Resolve staged workspace files for the next follow-up turn."""
+    stages = task.get("follow_up_setup_files")
+    if not isinstance(stages, list) or not stages:
+        return []
+    index = min(max(0, int(turn_count) - 1), len(stages) - 1)
+    rows = stages[index]
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
 
 
 def normalize_tool_signature(name: str, arguments: Any) -> str:
@@ -105,4 +142,3 @@ def load_jsonl_records(path: str | Path) -> list[dict[str, Any]]:
             if isinstance(row, dict):
                 rows.append(row)
     return rows
-

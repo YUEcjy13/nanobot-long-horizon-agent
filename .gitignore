@@ -6,6 +6,8 @@
 .env
 .web
 .orion
+.agent/
+CLAUDE.md
 
 # Claude / AI assistant artifacts
 docs/superpowers/
@@ -90,8 +92,6 @@ nano.*.save
 # Environment & secrets (keep examples tracked if needed)
 .env.*
 !.env.example
-local.config.json
-*.local.config.json
 
 # Logs & temp
 *.log
@@ -100,8 +100,3 @@ tmp/
 temp/
 *.tmp
 exp/
-
-# Local benchmark artifacts
-benchmark_records_*.jsonl
-benchmark_traces_*.jsonl
-benchmark_report*.md

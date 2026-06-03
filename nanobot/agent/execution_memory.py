@@ -162,6 +162,8 @@ class ExecutionMemoryStore:
                 score += 2.0
             if str(entry.get("status") or "").lower() == "failure":
                 score += 1.2
+            if str(entry.get("event_type") or "").lower() == "reflection":
+                score += 1.8
             if not overlap:
                 score -= 0.75
             ranked.append((score, entry))
@@ -182,10 +184,14 @@ class ExecutionMemoryStore:
         lines = ["Execution Memory Recall:"]
         for entry in entries:
             label = str(entry.get("status") or entry.get("event_type") or "note").strip()
-            summary = _as_text(entry.get("summary"), max_chars=200)
+            event_type = str(entry.get("event_type") or "").strip().lower()
+            summary = _as_text(entry.get("summary"), max_chars=240)
             step = _as_text(entry.get("step"), max_chars=120)
             facts = _normalize_list(entry.get("verified_facts"), max_items=2, max_chars=80)
-            parts = [f"- [{label}] {summary or 'Stored execution note.'}"]
+            if event_type == "reflection":
+                parts = [f"- [reflection] {summary or 'Stored reflection note.'}"]
+            else:
+                parts = [f"- [{label}] {summary or 'Stored execution note.'}"]
             if step:
                 parts.append(f"step={step}")
             if facts:

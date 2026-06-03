@@ -1,0 +1,49 @@
+[
+  {
+    "task_id": "stress_replan_old_data_path",
+    "category": "replanning",
+    "prompt": "这是一个长时执行 benchmark。请先调用 long_task 注册目标和初始计划。随后必须先尝试读取 README 中提到的旧路径 data/raw/final.json；如果失败或路径不存在，再更新 goal state、重规划并切换到正确路径，最后把最终正确的数据目录写入 reflective_outputs/stress_data_path.txt。",
+    "follow_up_prompt": "继续当前长时任务，若旧路径失败，请明确更新 goal state 后再改走新路径。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/replan/README.txt",
+        "content": "Old path: data/raw/final.json (deprecated)\nCurrent path: data/archive/final.json\n"
+      },
+      {
+        "path": "data/archive/final.json",
+        "content": "{\"status\": \"ready\", \"items\": 12}\n"
+      }
+    ]
+  },
+  {
+    "task_id": "stress_missing_provider_config",
+    "category": "repeated_failure_recovery",
+    "prompt": "这是一个长时执行 benchmark。请先调用 long_task 注册目标和初始计划。先尝试读取 configs/provider.env；如果该文件不存在，请记录失败、更新 goal state，并根据 runbook 改用 configs/provider.sample.env，最后把恢复结论写入 reflective_outputs/stress_provider_recovery.md。",
+    "follow_up_prompt": "继续当前长时任务，先处理 provider.env 缺失，再根据 runbook 找到替代方案。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/runbook/RUNBOOK.md",
+        "content": "# Benchmark Runbook\n- If provider.env is missing, use configs/provider.sample.env to restore required keys.\n- Always confirm the gateway health endpoint before rerunning.\n"
+      },
+      {
+        "path": "configs/provider.sample.env",
+        "content": "PROVIDER=deepseek-v4-pro\nTIMEOUT=30\n"
+      }
+    ]
+  },
+  {
+    "task_id": "stress_missing_pdf_then_manifest",
+    "category": "verified_fact_reuse",
+    "prompt": "这是一个长时执行 benchmark。请先调用 long_task 注册目标和初始计划。先尝试读取 fixtures/downloads/colpali.pdf；如果文件缺失，请记录失败，转而读取 manifest 找到声明的 PDF 路径，并把最终结论写到 reflective_outputs/stress_manifest_recovery.md。",
+    "follow_up_prompt": "继续当前长时任务，若 PDF 缺失，请复用 manifest 里的信息完成结论。",
+    "max_turns": 6,
+    "setup_files": [
+      {
+        "path": "fixtures/manifest/archive/paper_manifest.json",
+        "content": "{\n  \"paper\": \"ColPali\",\n  \"pdf_path\": \"fixtures/downloads/colpali.pdf\",\n  \"mirror\": \"disabled\"\n}\n"
+      }
+    ]
+  }
+]

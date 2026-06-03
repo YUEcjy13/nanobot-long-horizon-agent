@@ -11,7 +11,11 @@ from typing import Any, Mapping, Sequence
 
 from nanobot.agent.execution_memory import ExecutionMemoryStore
 from nanobot.agent.memory import MemoryStore
+from nanobot.agent.reflection import ReflectionBuilder
+from nanobot.agent.replan_gate import ReplanGate
 from nanobot.agent.skills import SkillsLoader
+from nanobot.agent.trajectory import TrajectoryTracer
+from nanobot.agent.verifier import RuleExecutionVerifier
 from nanobot.session.goal_state import goal_state_raw, goal_state_runtime_lines, parse_goal_state
 from nanobot.utils.helpers import (
     current_time_str,
@@ -42,7 +46,20 @@ class ContextBuilder:
         self.timezone = timezone
         self.memory = MemoryStore(workspace)
         self.execution_memory = ExecutionMemoryStore(workspace)
+        self.trajectory_tracer = TrajectoryTracer(workspace)
+        self.execution_verifier = RuleExecutionVerifier()
+        self.reflection_builder = ReflectionBuilder()
         self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)
+        self.enable_execution_verifier = _env_flag("NANOBOT_ENABLE_EXECUTION_VERIFIER", default=False)
+        self.execution_verifier_mode = (
+            os.environ.get("NANOBOT_EXECUTION_VERIFIER_MODE", "rule").strip().lower() or "rule"
+        )
+        self.enable_reflection_memory = _env_flag("NANOBOT_ENABLE_REFLECTION_MEMORY", default=False)
+        try:
+            max_replans = int(os.environ.get("NANOBOT_MAX_REPLANS_PER_GOAL", "3"))
+        except ValueError:
+            max_replans = 3
+        self.replan_gate = ReplanGate(max_replans_per_goal=max_replans)
         self.enable_goal_runtime_context = _env_flag("NANOBOT_ENABLE_GOAL_RUNTIME_CONTEXT", default=True)
         self.enable_execution_recall = _env_flag("NANOBOT_ENABLE_EXECUTION_RECALL", default=True)
 

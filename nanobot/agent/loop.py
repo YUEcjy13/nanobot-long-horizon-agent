@@ -164,6 +164,8 @@ class AgentLoop:
 
     _RUNTIME_CHECKPOINT_KEY = "runtime_checkpoint"
     _PENDING_USER_TURN_KEY = "pending_user_turn"
+    _ACTIVE_TURN_ID_KEY = "_active_turn_id"
+    _ACTIVE_CHAT_ID_KEY = "_active_chat_id"
 
     # Event-driven state transition table.
     # Handlers return an event string; the driver looks up the next state here.
@@ -673,7 +675,73 @@ class AgentLoop:
         )
         return {"role": "user", "content": "\n".join(lines)}
 
-    async def _maybe_prepare_auto_replan_injections(
+    def _append_goal_trajectory_event(
+        self,
+        session: Session,
+        goal: dict[str, Any],
+        *,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        goal_id = normalize_goal_text(goal.get("goal_id"), max_chars=120)
+        if not goal_id:
+            return
+        chat_id = str(session.metadata.get(self._ACTIVE_CHAT_ID_KEY) or "").strip()
+        if not chat_id:
+            _channel, _sep, maybe_chat_id = session.key.partition(":")
+            chat_id = maybe_chat_id or session.key
+        self.context.trajectory_tracer.append_event(
+            goal,
+            event_type=event_type,
+            payload=payload or {},
+            chat_id=chat_id,
+            turn_id=str(session.metadata.get(self._ACTIVE_TURN_ID_KEY) or ""),
+        )
+
+    def _record_tool_events_to_trajectory(
+        self,
+        session: Session,
+        goal: dict[str, Any],
+        *,
+        tool_calls: list[Any],
+        tool_events: list[dict[str, str]],
+    ) -> None:
+        if not tool_events:
+            return
+        for idx, event in enumerate(tool_events):
+            tool_name = normalize_goal_text(event.get("name"), max_chars=120) or "tool"
+            detail = normalize_goal_text(event.get("detail"), max_chars=300)
+            status = str(event.get("status") or "").strip().lower()
+            tool_call = tool_calls[idx] if idx < len(tool_calls) else None
+            tool_args = getattr(tool_call, "arguments", {}) if tool_call is not None else {}
+            payload = {
+                "tool_name": tool_name,
+                "status": status or "unknown",
+                "detail": detail,
+                "tool_args_preview": normalize_goal_text(str(tool_args), max_chars=280),
+            }
+            event_type = "tool_call_failed" if status == "error" else "tool_call_succeeded"
+            self._append_goal_trajectory_event(
+                session,
+                goal,
+                event_type=event_type,
+                payload=payload,
+            )
+
+    @staticmethod
+    def _enrich_tool_events_for_verifier(
+        tool_calls: list[Any],
+        tool_events: list[dict[str, str]],
+    ) -> list[dict[str, Any]]:
+        enriched: list[dict[str, Any]] = []
+        for idx, event in enumerate(tool_events):
+            row = dict(event)
+            tool_call = tool_calls[idx] if idx < len(tool_calls) else None
+            row["arguments"] = getattr(tool_call, "arguments", {}) if tool_call is not None else {}
+            enriched.append(row)
+        return enriched
+
+    async def _maybe_prepare_legacy_auto_replan_injections(
         self,
         session: Session,
         *,
@@ -795,6 +863,162 @@ class AgentLoop:
             details=" | ".join(failure_notes[:_AUTO_REPLAN_MAX_NOTES]) or "auto-replan trigger",
         )
         return [self._build_auto_replan_injection(goal, reasons=reasons, failure_notes=failure_notes)]
+
+    async def _maybe_prepare_supervised_auto_replan_injections(
+        self,
+        session: Session,
+        *,
+        tool_calls: list[Any],
+        tool_events: list[dict[str, str]],
+    ) -> list[dict[str, Any]]:
+        goal = parse_goal_state(goal_state_raw(session.metadata))
+        if not isinstance(goal, dict) or goal.get("status") != "active":
+            return []
+        if any(getattr(call, "name", "") == "update_goal_state" for call in tool_calls):
+            return []
+
+        failure_notes = self._auto_replan_failure_notes(tool_events)
+        self._record_tool_events_to_trajectory(
+            session,
+            goal,
+            tool_calls=tool_calls,
+            tool_events=tool_events,
+        )
+        verifier_tool_events = self._enrich_tool_events_for_verifier(tool_calls, tool_events)
+        trajectory_events = self.context.trajectory_tracer.read_events(
+            normalize_goal_text(goal.get("goal_id"), max_chars=80)
+        )
+        decision = self.context.execution_verifier.verify(
+            goal_state=goal,
+            tool_events=verifier_tool_events,
+            trajectory_events=trajectory_events,
+        )
+        self._append_goal_trajectory_event(
+            session,
+            goal,
+            event_type="verifier_decision",
+            payload={
+                "status": decision.status,
+                "confidence": decision.confidence,
+                "progress_made": decision.progress_made,
+                "step_completed": decision.step_completed,
+                "need_replan": decision.need_replan,
+                "repeated_failure": decision.repeated_failure,
+                "should_reflect": decision.should_reflect,
+                "root_cause": decision.root_cause,
+                "evidence": decision.evidence,
+                "suggested_next_step": decision.suggested_next_step,
+            },
+        )
+
+        reflection = None
+        if decision.should_reflect and self.context.enable_reflection_memory:
+            reflection = self.context.reflection_builder.build(
+                goal,
+                decision,
+                failure_notes=failure_notes,
+            )
+            if reflection is not None:
+                summary = reflection.to_summary()
+                self.context.execution_memory.append_episode(
+                    goal,
+                    event_type="reflection",
+                    summary=summary,
+                    step=reflection.failed_step,
+                    status=decision.status,
+                    details=reflection.failed_action,
+                    verified_facts=[
+                        f"Root cause: {reflection.root_cause}",
+                        f"Avoid next time: {reflection.avoid_next_time}",
+                        f"Suggested strategy: {reflection.suggested_strategy}",
+                    ],
+                )
+                self._append_goal_trajectory_event(
+                    session,
+                    goal,
+                    event_type="reflection_created",
+                    payload=reflection.to_dict(),
+                )
+
+        if not decision.need_replan:
+            return []
+
+        existing_failures = normalize_goal_list(goal.get("recent_failures"), max_items=8, max_chars=300)
+        merged_failures = self._unique_recent_text(
+            existing_failures,
+            failure_notes,
+            max_items=8,
+        )
+        current_step = normalize_goal_text(goal.get("current_step"), max_chars=280)
+        blocked_reason = normalize_goal_text(goal.get("blocked_reason"), max_chars=800) or normalize_goal_text(
+            decision.root_cause or f"Execution is stuck on step '{current_step or 'current step'}'.",
+            max_chars=800,
+        )
+        signature_source = "||".join([
+            normalize_goal_text(goal.get("goal_id"), max_chars=80),
+            current_step,
+            decision.status,
+            normalize_goal_text(decision.root_cause, max_chars=240),
+            *sorted(failure_notes),
+        ])
+        signature = hashlib.sha1(signature_source.encode("utf-8")).hexdigest()[:16]
+        if goal.get("_last_auto_replan_signature") == signature:
+            return []
+
+        goal["recent_failures"] = merged_failures
+        goal["blocked_reason"] = blocked_reason
+        goal["_last_auto_replan_signature"] = signature
+        goal["last_updated_at"] = datetime.now().isoformat()
+        session.metadata[GOAL_STATE_KEY] = goal
+        discard_legacy_goal_state_key(session.metadata)
+        self.sessions.save(session)
+
+        self.context.execution_memory.append_episode(
+            goal,
+            event_type="failure",
+            summary=blocked_reason,
+            step=current_step,
+            status="failure",
+            details=" | ".join(failure_notes[:_AUTO_REPLAN_MAX_NOTES]) or decision.status,
+        )
+        self._append_goal_trajectory_event(
+            session,
+            goal,
+            event_type="replan_requested",
+            payload={
+                "failure_notes": failure_notes,
+                "decision_status": decision.status,
+                "root_cause": decision.root_cause,
+                "reflection": reflection.to_dict() if reflection is not None else None,
+            },
+        )
+        return [
+            self.context.replan_gate.build_injection(
+                goal,
+                decision,
+                reflection,
+                failure_notes=failure_notes,
+            )
+        ]
+
+    async def _maybe_prepare_auto_replan_injections(
+        self,
+        session: Session,
+        *,
+        tool_calls: list[Any],
+        tool_events: list[dict[str, str]],
+    ) -> list[dict[str, Any]]:
+        if self.context.enable_execution_verifier:
+            return await self._maybe_prepare_supervised_auto_replan_injections(
+                session,
+                tool_calls=tool_calls,
+                tool_events=tool_events,
+            )
+        return await self._maybe_prepare_legacy_auto_replan_injections(
+            session,
+            tool_calls=tool_calls,
+            tool_events=tool_events,
+        )
 
     async def _dispatch_command_inline(
         self,
@@ -1496,13 +1720,24 @@ class AgentLoop:
             ctx.session,
             replay_max_messages=self._max_messages,
         )
+        ctx.session.metadata[self._ACTIVE_TURN_ID_KEY] = ctx.turn_id
+        ctx.session.metadata[self._ACTIVE_CHAT_ID_KEY] = ctx.msg.chat_id
         self._set_tool_context(
             ctx.msg.channel,
             ctx.msg.chat_id,
             ctx.msg.metadata.get("message_id"),
-            ctx.msg.metadata,
+            {**ctx.msg.metadata, "turn_id": ctx.turn_id},
             session_key=ctx.session_key,
         )
+        active_goal = parse_goal_state(goal_state_raw(ctx.session.metadata))
+        if isinstance(active_goal, dict) and active_goal.get("status") == "active":
+            self.context.trajectory_tracer.append_event(
+                active_goal,
+                event_type="turn_started",
+                chat_id=ctx.msg.chat_id,
+                turn_id=ctx.turn_id,
+                payload={"channel": ctx.msg.channel},
+            )
         if message_tool := self.tools.get("message"):
             if isinstance(message_tool, MessageTool):
                 message_tool.start_turn()
@@ -1564,6 +1799,21 @@ class AgentLoop:
         ctx.save_skip = 1 + len(ctx.history) + (1 if ctx.user_persisted_early else 0)
 
         ctx.turn_latency_ms = max(0, int((time.time() - ctx.turn_wall_started_at) * 1000))
+        active_goal = parse_goal_state(goal_state_raw(ctx.session.metadata))
+        if isinstance(active_goal, dict) and active_goal.get("status") == "active":
+            self.context.trajectory_tracer.append_event(
+                active_goal,
+                event_type="turn_finished",
+                chat_id=ctx.msg.chat_id,
+                turn_id=ctx.turn_id,
+                payload={
+                    "latency_ms": ctx.turn_latency_ms,
+                    "stop_reason": ctx.stop_reason,
+                    "tools_used": ctx.tools_used,
+                },
+            )
+        ctx.session.metadata.pop(self._ACTIVE_TURN_ID_KEY, None)
+        ctx.session.metadata.pop(self._ACTIVE_CHAT_ID_KEY, None)
         self._save_turn(
             ctx.session, ctx.all_messages, ctx.save_skip,
             turn_latency_ms=ctx.turn_latency_ms,

@@ -1,85 +1,112 @@
-# Nanobot Long-Horizon Agent
+# Nanobot+: Reflective Execution Supervisor for Long-Horizon Agents
 
-A runnable fork of [HKUDS/nanobot](https://github.com/HKUDS/nanobot) with long-horizon execution enhancements for goal tracking, execution memory, retrieval-aware recall, and failure-aware replanning.
+`nanobot-long-horizon-agent` is a runnable research fork of [HKUDS/nanobot](https://github.com/HKUDS/nanobot) focused on **long-horizon tool-using agents**.
 
-This repository keeps the full `nanobot` runtime skeleton so it can be cloned and run directly, while integrating the project-specific improvements developed for long-task agent execution.
+This project upgrades the original agent loop with a lightweight **Reflective Execution Supervisor** that explicitly tracks goal progress, diagnoses repeated failures, writes reflection memory, and triggers verifier-gated replanning in multi-turn execution.
 
-## What This Fork Adds
+## Why This Fork
 
-Compared with upstream `nanobot`, this fork adds a compact execution layer for long-horizon tasks:
+Strong frontier models can often finish tasks even when the execution process is opaque, brittle, or inefficient. In practice, that means completion rate alone is a weak signal for agent quality.
 
-- **Structured goal state**
-  - Stable fields such as `goal_id`, `plan_steps`, `current_step`, `completed_steps`, `progress_summary`, `blocked_reason`, `recent_failures`, `verified_facts`, and `replan_count`
-  - Shared between backend runtime context and WebUI state
+This fork focuses on the supervision layer behind long-horizon execution:
 
-- **Episodic execution memory**
-  - Dedicated task-focused JSONL memory for execution traces
-  - Records `goal_started`, `progress_update`, `failure`, `replan`, and `goal_completed`
+- **Structured goal state** for multi-step objectives
+- **Execution memory** for task-focused episodic traces
+- **Trajectory tracing** for observable execution history
+- **Rule-based execution verifier** for failure diagnosis
+- **Reflection memory** for reusable recovery hints
+- **Verifier-gated replanning** for controlled recovery instead of blind retries
 
-- **Retrieval-aware recall**
-  - Recalls high-value execution-memory snippets before each decision turn
-  - Improves continuity across long multi-step tasks without overloading the prompt
+The result is a more diagnosable and benchmarkable agent system, not just a prompt tweak.
 
-- **Failure-aware replanning**
-  - Triggers replanning when the agent encounters repeated failures, blocked progress, or step plateaus
-  - Reuses the existing long-task tool path instead of adding a heavyweight planner subsystem
+## Core Upgrades
 
-- **Live benchmark pipeline**
-  - Includes runnable scripts for baseline vs enhanced comparisons
-  - Covers completion, repeated tool calls, recovery behavior, replans, and latency
+### 1. Structured Goal Runtime
+
+Active goals are represented with structured fields such as:
+
+- `goal_id`
+- `plan_steps`
+- `current_step`
+- `completed_steps`
+- `verified_facts`
+- `blocked_reason`
+- `replan_count`
+
+These states are synchronized to the WebUI through WebSocket so long-running tasks remain visible instead of becoming hidden inside free-form chat.
+
+### 2. Task-Focused Execution Memory
+
+This fork adds an episodic execution memory store specialized for long-horizon tasks. It records events such as:
+
+- `goal_started`
+- `progress_update`
+- `failure`
+- `reflection`
+- `replan`
+- `goal_completed`
+
+Relevant memory is recalled into runtime context before subsequent decisions.
+
+### 3. Reflective Execution Supervisor
+
+The new supervisor layer adds:
+
+- **Trajectory tracing**: writes per-goal execution traces
+- **Execution verifier**: detects repeated failure, stalled steps, and replanning conditions
+- **Reflection builder**: turns verifier decisions into reusable recovery guidance
+- **Replan gate**: injects controlled replanning instructions back into the loop
+
+This creates the full supervision chain:
+
+`goal state -> trajectory tracing -> verifier diagnosis -> reflection memory -> gated replanning`
+
+### 4. Live Benchmarking and Data Export
+
+The repo includes benchmark utilities for comparing:
+
+- `baseline`
+- `nanobot_plus`
+- `reflective_supervisor`
+
+It also includes utilities to export trajectory-derived preference / SFT-style data for future training.
 
 ## Repository Layout
 
 ```text
-nanobot/
-webui/
+nanobot/agent/
+  execution_memory.py
+  trajectory.py
+  verifier.py
+  reflection.py
+  replan_gate.py
+
 benchmarks/
+  goal_execution/
+  reflective_execution/
+
 docs/
+  goal-execution-benchmark.md
+  reflective_execution_supervisor.md
+
 tests/
+  agent/
+  utils/
 ```
 
-- `nanobot/`: backend agent framework and long-horizon execution changes
-- `webui/`: full WebUI frontend
-- `benchmarks/goal_execution/`: benchmark collection and comparison scripts
-- `docs/goal-execution-benchmark.md`: benchmark methodology
-- `tests/`: upstream tests plus focused regression coverage for the new execution path
+## Quick Start
 
-## Key Modified Areas
-
-Core enhancement logic lives mainly in:
-
-- `nanobot/agent/context.py`
-- `nanobot/agent/execution_memory.py`
-- `nanobot/agent/loop.py`
-- `nanobot/agent/runner.py`
-- `nanobot/agent/tools/long_task.py`
-- `nanobot/session/goal_state.py`
-- `nanobot/providers/base.py`
-- `nanobot/providers/openai_compat_provider.py`
-- `nanobot/utils/goal_benchmark.py`
-- `nanobot/utils/goal_eval.py`
-- `webui/src/components/thread/ThreadComposer.tsx`
-- `webui/src/lib/types.ts`
-
-## Installation
-
-### 1. Clone the repository
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/YUEcjy13/nanobot-long-horizon-agent.git
 cd nanobot-long-horizon-agent
-```
-
-### 2. Create a Python environment and install backend dependencies
-
-```bash
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -U pip
-pip install -e ".[dev]"
+pip install -e .
 ```
 
-### 3. Install WebUI dependencies
+### 2. Install WebUI dependencies
 
 ```bash
 cd webui
@@ -87,11 +114,15 @@ npm install
 cd ..
 ```
 
-## Quick Start With DeepSeek + WebUI
+### 3. Configure your provider
 
-### 1. Create a local config file
+Create or edit your config file:
 
-Create `local.config.json` at the repository root:
+```bash
+nanobot onboard
+```
+
+For example, with DeepSeek:
 
 ```json
 {
@@ -108,125 +139,124 @@ Create `local.config.json` at the repository root:
   },
   "channels": {
     "websocket": {
+      "enabled": true,
       "host": "127.0.0.1",
-      "port": 8765,
-      "websocketRequiresToken": false
+      "port": 8765
     }
   },
   "gateway": {
+    "enabled": true,
     "host": "127.0.0.1",
     "port": 18790
   }
 }
 ```
 
-### 2. Export your API key
+Then export your key:
 
 ```bash
-export DEEPSEEK_API_KEY="your_deepseek_api_key"
+export DEEPSEEK_API_KEY=your_key_here
 ```
 
-### 3. Start the gateway
+### 4. Launch the gateway
 
 ```bash
-source .venv/bin/activate
-nanobot gateway --config ./local.config.json
+nanobot gateway --config /path/to/your/config.json
 ```
 
-### 4. Start the WebUI in another terminal
+### 5. Launch the WebUI
 
 ```bash
 cd webui
 npm run dev
 ```
 
-Then open:
+Open:
 
 ```text
 http://127.0.0.1:5173
 ```
 
-## Runtime Notes
+## Reflective Supervisor Controls
 
-- This fork has been validated locally with the WebSocket gateway + WebUI flow.
-- The DeepSeek path depends on your own valid API key and model access.
-- `nanobot.local.config.json` and other personal local config files are intentionally not tracked in this repository.
+The reflective components are controlled by environment variables:
+
+```bash
+export NANOBOT_ENABLE_GOAL_RUNTIME_CONTEXT=1
+export NANOBOT_ENABLE_EXECUTION_RECALL=1
+export NANOBOT_ENABLE_AUTO_REPLAN=1
+export NANOBOT_ENABLE_EXECUTION_VERIFIER=1
+export NANOBOT_EXECUTION_VERIFIER_MODE=rule
+export NANOBOT_ENABLE_REFLECTION_MEMORY=1
+export NANOBOT_MAX_REPLANS_PER_GOAL=3
+```
 
 ## Benchmark
 
-The benchmark task set and scripts live in:
-
-- `benchmarks/goal_execution/tasks.json`
-- `benchmarks/goal_execution/collect_live_benchmark.py`
-- `benchmarks/goal_execution/compare_live_benchmarks.py`
-- `docs/goal-execution-benchmark.md`
-
-### Example benchmark workflow
-
-Run the enhanced build:
+### Goal-execution benchmark
 
 ```bash
-python benchmarks/goal_execution/collect_live_benchmark.py \
-  --variant enhanced \
-  --output ./benchmark_records_enhanced.jsonl \
-  --trace-output ./benchmark_traces_enhanced.jsonl
+python benchmarks/goal_execution/collect_live_benchmark.py
+python benchmarks/goal_execution/compare_live_benchmarks.py
 ```
 
-Run a baseline/ablation build by restarting the gateway with:
+### Reflective supervisor benchmark
 
 ```bash
-export NANOBOT_ENABLE_GOAL_RUNTIME_CONTEXT=0
-export NANOBOT_ENABLE_EXECUTION_RECALL=0
-export NANOBOT_ENABLE_AUTO_REPLAN=0
+python benchmarks/reflective_execution/run_reflective_benchmark.py \
+  --tasks benchmarks/reflective_execution/stress_tasks_v2.json
+
+python benchmarks/reflective_execution/compare_reflective_results.py
 ```
 
-Then collect baseline records:
+## Live A/B Result Snapshot
+
+The most informative benchmark is the **v2 live stress benchmark** using real WebSocket execution and `deepseek-v4-pro`.
+
+### Task setting
+
+- 4 stress tasks
+- multi-turn tool-use
+- repeated-failure and stalled-step pressure
+- baseline vs `nanobot_plus` vs `reflective_supervisor`
+
+### Main result
+
+| Variant | Success Rate | Avg Tool Calls | Avg Latency | Replans | Reflections | Reflection Reuse | Trajectory Completeness |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| baseline | 100% | 9.25 | 50,463 ms | 0 | 0 | 0% | 60.0% |
+| nanobot_plus | 100% | 11.75 | 63,186 ms | 0 | 0 | 0% | 60.0% |
+| reflective_supervisor | 100% | 9.50 | 52,658 ms | 3 | 3 | 100% | 100.0% |
+
+### Interpretation
+
+With a strong model, completion rate alone does not separate systems well. The key improvement from the reflective supervisor is the **quality of execution supervision**:
+
+- explicit verifier-triggered replanning
+- reflection generation and reuse
+- full trajectory coverage for post-hoc diagnosis
+- lower tool-call overhead than `nanobot_plus` under the same stress tasks
+
+## Key Files for the Upgrade
+
+- [`nanobot/agent/context.py`](./nanobot/agent/context.py)
+- [`nanobot/agent/loop.py`](./nanobot/agent/loop.py)
+- [`nanobot/agent/tools/long_task.py`](./nanobot/agent/tools/long_task.py)
+- [`nanobot/agent/execution_memory.py`](./nanobot/agent/execution_memory.py)
+- [`nanobot/agent/trajectory.py`](./nanobot/agent/trajectory.py)
+- [`nanobot/agent/verifier.py`](./nanobot/agent/verifier.py)
+- [`nanobot/agent/reflection.py`](./nanobot/agent/reflection.py)
+- [`nanobot/agent/replan_gate.py`](./nanobot/agent/replan_gate.py)
+- [`docs/reflective_execution_supervisor.md`](./docs/reflective_execution_supervisor.md)
+
+## Testing
+
+Run the core regression and supervisor tests with:
 
 ```bash
-python benchmarks/goal_execution/collect_live_benchmark.py \
-  --variant baseline \
-  --output ./benchmark_records_baseline.jsonl \
-  --trace-output ./benchmark_traces_baseline.jsonl
-```
-
-Compare runs:
-
-```bash
-python benchmarks/goal_execution/compare_live_benchmarks.py \
-  --enhanced ./benchmark_records_enhanced.jsonl \
-  --baseline ./benchmark_records_baseline.jsonl
-```
-
-## Live Benchmark Snapshot
-
-On the current 3-task safe benchmark slice with a strong model configuration:
-
-| Metric | Baseline | Enhanced |
-| --- | ---: | ---: |
-| Completion rate | 100% | 100% |
-| Repeated tool-call rate | 3.8% | 0.0% |
-| Average latency | 71,018 ms | 60,332 ms |
-
-Interpretation:
-
-- In this setting, the main observed gain is **higher execution efficiency** and **less redundant tool use**
-- With stronger frontier models, long-horizon enhancements may show up first as stability and efficiency gains rather than completion-rate gains
-
-## Focused Tests
-
-The long-horizon execution path is covered by focused regression tests such as:
-
-```bash
-pytest tests/agent/test_context_builder.py \
-  tests/agent/test_execution_memory.py \
-  tests/agent/test_loop_auto_replan.py \
-  tests/agent/tools/test_long_task.py \
-  tests/session/test_goal_state.py \
-  tests/providers/test_provider_input_sanitization.py \
-  tests/utils/test_goal_benchmark.py \
-  tests/utils/test_goal_eval.py
+pytest tests/agent tests/utils tests/session tests/providers
 ```
 
 ## Acknowledgement
 
-This project is built on top of the excellent open-source `nanobot` framework from HKUDS. Please also credit the upstream project if you use this fork for research, demos, or engineering work.
+This project is built on top of the excellent open-source foundation from [HKUDS/nanobot](https://github.com/HKUDS/nanobot). This fork keeps the original runnable agent stack while extending it toward **long-horizon execution supervision, reflection, and evaluation**.

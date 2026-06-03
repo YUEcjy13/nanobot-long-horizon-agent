@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from nanobot.agent.execution_memory import ExecutionMemoryStore
+from nanobot.agent.trajectory import TrajectoryTracer
 from nanobot.agent.tools.base import Tool, tool_parameters
 from nanobot.agent.tools.context import ContextAware, RequestContext
 from nanobot.agent.tools.schema import ArraySchema, BooleanSchema, StringSchema, tool_parameters_schema
@@ -85,6 +86,9 @@ class _GoalToolsMixin(ContextAware):
         self._execution_memory = (
             ExecutionMemoryStore(Path(workspace)) if workspace is not None else None
         )
+        self._trajectory = (
+            TrajectoryTracer(Path(workspace)) if workspace is not None else None
+        )
 
     def set_context(self, ctx: RequestContext) -> None:
         self._request_ctx = ctx
@@ -139,6 +143,30 @@ class _GoalToolsMixin(ContextAware):
             status=status,
             details=details,
             verified_facts=verified_facts,
+        )
+
+    def _append_trajectory_event(
+        self,
+        goal_state: dict[str, Any] | None,
+        *,
+        event_type: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        if self._trajectory is None:
+            return
+        chat_id = self._request_ctx.chat_id if self._request_ctx is not None else None
+        turn_id = None
+        if self._request_ctx is not None:
+            turn_id = (
+                str(self._request_ctx.metadata.get("turn_id") or self._request_ctx.message_id or "").strip()
+                or None
+            )
+        self._trajectory.append_event(
+            goal_state,
+            event_type=event_type,
+            chat_id=chat_id,
+            turn_id=turn_id,
+            payload=payload,
         )
 
 
@@ -270,6 +298,16 @@ class LongTaskTool(Tool, _GoalToolsMixin):
             step=current,
             status="info",
             details=" | ".join(normalized_plan[:4]) if normalized_plan else None,
+        )
+        self._append_trajectory_event(
+            blob,
+            event_type="goal_started",
+            payload={
+                "ui_summary": summary,
+                "plan_steps": normalized_plan,
+                "current_step": current,
+                "progress_summary": progress,
+            },
         )
         await self._publish_goal_state_ws(sess.metadata)
         extra = f"\nSummary line: {summary}" if summary else ""
@@ -480,6 +518,16 @@ class UpdateGoalStateTool(Tool, _GoalToolsMixin):
             details="; ".join(updates),
             verified_facts=normalized_facts,
         )
+        self._append_trajectory_event(
+            goal,
+            event_type="goal_state_updated",
+            payload={
+                "updates": updates,
+                "event_type": event_type,
+                "status": status,
+                "summary": summary,
+            },
+        )
 
         await self._publish_goal_state_ws(sess.metadata)
 
@@ -567,6 +615,14 @@ class CompleteGoalTool(Tool, _GoalToolsMixin):
             event_type="goal_completed",
             summary=(recap or "").strip() or "Goal completed.",
             status="success",
+        )
+        self._append_trajectory_event(
+            sess.metadata.get(GOAL_STATE_KEY),
+            event_type="goal_completed",
+            payload={
+                "completed_at": ended,
+                "recap": (recap or "").strip(),
+            },
         )
         await self._publish_goal_state_ws(sess.metadata)
         tail = (recap or "").strip()
